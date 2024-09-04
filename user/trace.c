@@ -19,9 +19,11 @@ main(int argc, char *argv[])
     exit(1);
   }
   
+  // 第0个是trace, 第1个是mask
   for(i = 2; i < argc && i < MAXARG; i++){
     nargv[i-2] = argv[i];
   }
+
   exec(nargv[0], nargv);
   exit(0);
 }

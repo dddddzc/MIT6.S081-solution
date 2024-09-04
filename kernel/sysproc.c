@@ -1,11 +1,12 @@
 #include "types.h"
 #include "riscv.h"
-#include "defs.h"
+#include "defs.h" // 注意这里
 #include "date.h"
 #include "param.h"
 #include "memlayout.h"
 #include "spinlock.h"
 #include "proc.h"
+#include "sysinfo.h"
 
 uint64
 sys_exit(void)
@@ -94,4 +95,37 @@ sys_uptime(void)
   xticks = ticks;
   release(&tickslock);
   return xticks;
+}
+
+// trace an instruction
+uint64
+sys_trace(void)
+{
+  int mask;
+  if(argint(0, &mask) < 0) // 第0个参数即mask
+  {
+    return -1;
+  }; 
+  myproc()->mask = mask;
+  return 0;
+}
+
+// trace an instruction
+uint64
+sys_sysinfo(void)
+{
+  uint64 useraddr;
+  struct proc *p = myproc();
+  struct sysinfo sf; // 要求的信息的 sysinfo 结构体
+
+  argaddr(0, &useraddr);  // 获取从用户空间传入的指针
+  sf.freemem = get_free_memory();
+  sf.nproc = get_proc_used();
+
+  if(copyout(p->pagetable, useraddr, (char *)&sf, sizeof(sf)) < 0)
+  {
+    return -1;
+  }
+
+  return 0;
 }

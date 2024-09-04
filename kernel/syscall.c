@@ -35,7 +35,7 @@ static uint64
 argraw(int n)
 {
   struct proc *p = myproc();
-  switch (n) {
+  switch (n) { // 与以前的约定一样,一般而言函数传递的前6个参数在寄存器中
   case 0:
     return p->trapframe->a0;
   case 1:
@@ -104,6 +104,8 @@ extern uint64 sys_unlink(void);
 extern uint64 sys_wait(void);
 extern uint64 sys_write(void);
 extern uint64 sys_uptime(void);
+extern uint64 sys_trace(void);
+extern uint64 sys_sysinfo(void);
 
 static uint64 (*syscalls[])(void) = {
 [SYS_fork]    sys_fork,
@@ -127,20 +129,55 @@ static uint64 (*syscalls[])(void) = {
 [SYS_link]    sys_link,
 [SYS_mkdir]   sys_mkdir,
 [SYS_close]   sys_close,
+[SYS_trace]   sys_trace,
+[SYS_sysinfo] sys_sysinfo,
 };
 
+const char *syscall_num2str[]={
+[SYS_fork]    "syscall fork",
+[SYS_exit]    "syscall exit",
+[SYS_wait]    "syscall wait",
+[SYS_pipe]    "syscall pipe",
+[SYS_read]    "syscall read",
+[SYS_kill]    "syscall kill",
+[SYS_exec]    "syscall exec",
+[SYS_fstat]   "syscall fstat",
+[SYS_chdir]   "syscall chdir",
+[SYS_dup]     "syscall dup",
+[SYS_getpid]  "syscall getpid",
+[SYS_sbrk]    "syscall sbrk",
+[SYS_sleep]   "syscall sleep",
+[SYS_uptime]  "syscall uptime",
+[SYS_open]    "syscall open",
+[SYS_write]   "syscall write",
+[SYS_mknod]   "syscall mknod",
+[SYS_unlink]  "syscall unlink",
+[SYS_link]    "syscall link",
+[SYS_mkdir]   "syscall mkdir",
+[SYS_close]   "syscall close",
+[SYS_trace]   "syscall trace",
+[SYS_sysinfo] "syscall sysinfo",
+};
+  
 void
 syscall(void)
 {
   int num;
   struct proc *p = myproc();
 
-  num = p->trapframe->a7;
+  num = p->trapframe->a7;  // 即调用函数的编号,例如SYS_trace = 22
+
   if(num > 0 && num < NELEM(syscalls) && syscalls[num]) {
-    p->trapframe->a0 = syscalls[num]();
-  } else {
+    p->trapframe->a0 = syscalls[num](); // 返回值,等下 printf 要用到
+    if(p->mask & 1 << num) // 用mask的每个位进行位运算,确定当前系统调用是否被捕获
+    {
+      printf("%d: %s -> %d\n", p->pid, syscall_num2str[num], p->trapframe->a0);
+    } 
+  }  
+  else {
     printf("%d %s: unknown sys call %d\n",
             p->pid, p->name, num);
     p->trapframe->a0 = -1;
   }
+
 }
