@@ -86,8 +86,9 @@ get_free_memory(void)
 {
   uint64 free_mem = 0;
 
+  struct run* f;
   acquire(&kmem.lock);
-  struct run* f = kmem.freelist;
+  f = kmem.freelist;
   while(f)
   {
     f = f->next;
