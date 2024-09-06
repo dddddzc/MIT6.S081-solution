@@ -32,17 +32,19 @@ struct spinlock wait_lock;
 void
 proc_mapstacks(pagetable_t kpgtbl) {
   struct proc *p;
-  
+  // 遍历processes
   for(p = proc; p < &proc[NPROC]; p++) {
-    char *pa = kalloc();
+    char *pa = kalloc(); // 为每个进程分配一页作为kernel stack
     if(pa == 0)
       panic("kalloc");
-    uint64 va = KSTACK((int) (p - proc));
+    uint64 va = KSTACK((int) (p - proc)); // 计算每个进程kernel stack的虚拟地址
     kvmmap(kpgtbl, va, (uint64)pa, PGSIZE, PTE_R | PTE_W);
   }
 }
 
 // initialize the proc table at boot time.
+// 为每个进程分配一个内核栈
+// 将每个栈映射到KSTACK生成的虚拟地址
 void
 procinit(void)
 {

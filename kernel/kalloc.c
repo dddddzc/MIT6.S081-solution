@@ -20,7 +20,7 @@ struct run {
 
 struct {
   struct spinlock lock;
-  struct run *freelist;
+  struct run *freelist; // 将free page的run结构存在free page自身内部
 } kmem;
 
 void
@@ -34,7 +34,7 @@ void
 freerange(void *pa_start, void *pa_end)
 {
   char *p;
-  p = (char*)PGROUNDUP((uint64)pa_start);
+  p = (char*)PGROUNDUP((uint64)pa_start); // PGROUNDUP用于对齐4096
   for(; p + PGSIZE <= (char*)pa_end; p += PGSIZE)
     kfree(p);
 }
@@ -52,12 +52,13 @@ kfree(void *pa)
     panic("kfree");
 
   // Fill with junk to catch dangling refs.
+  // 导致使用 dangling pointer 读取到garbage,更快崩溃
   memset(pa, 1, PGSIZE);
 
   r = (struct run*)pa;
 
   acquire(&kmem.lock);
-  r->next = kmem.freelist;
+  r->next = kmem.freelist; // 将页面从前面插入到freelist中
   kmem.freelist = r;
   release(&kmem.lock);
 }

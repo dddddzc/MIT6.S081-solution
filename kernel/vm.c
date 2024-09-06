@@ -16,13 +16,14 @@ extern char etext[];  // kernel.ld sets this to end of kernel code.
 extern char trampoline[]; // trampoline.S
 
 // Make a direct-map page table for the kernel.
+// 这些映射发生在分页启动之前,所以虚拟内存到物理内存直接映射
 pagetable_t
 kvmmake(void)
 {
   pagetable_t kpgtbl;
 
-  kpgtbl = (pagetable_t) kalloc();
-  memset(kpgtbl, 0, PGSIZE);
+  kpgtbl = (pagetable_t) kalloc(); // root page-table page
+  memset(kpgtbl, 0, PGSIZE);       // 并全部初始化为0
 
   // uart registers
   kvmmap(kpgtbl, UART0, UART0, PGSIZE, PTE_R | PTE_W);
@@ -44,6 +45,7 @@ kvmmake(void)
   kvmmap(kpgtbl, TRAMPOLINE, (uint64)trampoline, PGSIZE, PTE_R | PTE_X);
 
   // map kernel stacks
+  // 为每个进程分配一个 kernel stack
   proc_mapstacks(kpgtbl);
   
   return kpgtbl;
@@ -61,6 +63,9 @@ kvminit(void)
 void
 kvminithart()
 {
+  // 将根页表的物理地址写入寄存器satp
+  // 在写入之后,CPU将使用kernel page table进行地址转换
+  // 由于identity map,下一条指令的当前虚拟地址将映射到正确的物理地址
   w_satp(MAKE_SATP(kernel_pagetable));
   sfence_vma();
 }
@@ -82,16 +87,20 @@ walk(pagetable_t pagetable, uint64 va, int alloc)
 {
   if(va >= MAXVA)
     panic("walk");
-
+  
+  // 当walk降低页表的级别时 它从PTE中提取下一级页表的（物理）地址
+  // 然后使用该地址作为虚拟地址来获取下一级的PTE(因为direct-mapped)
   for(int level = 2; level > 0; level--) {
     pte_t *pte = &pagetable[PX(level, va)];
     if(*pte & PTE_V) {
       pagetable = (pagetable_t)PTE2PA(*pte);
-    } else {
+    } else { 
+      // alloc = 0则不分配新页表,否则要分配新页(利用kalloc)
+      // kalloc()一次分配4096Bytes(4KB),kalloc()返回0说明分配失败
       if(!alloc || (pagetable = (pde_t*)kalloc()) == 0)
-        return 0;
-      memset(pagetable, 0, PGSIZE);
-      *pte = PA2PTE(pagetable) | PTE_V;
+        return 0; 
+      memset(pagetable, 0, PGSIZE);     // 将新分配的页表初始化为0
+      *pte = PA2PTE(pagetable) | PTE_V; // 将新分配的页表的物理地址转为PTE,并设置PTE_V
     }
   }
   return &pagetable[PX(0, va)];
@@ -126,6 +135,7 @@ walkaddr(pagetable_t pagetable, uint64 va)
 void
 kvmmap(pagetable_t kpgtbl, uint64 va, uint64 pa, uint64 sz, int perm)
 {
+  // kvmmap 调用 mappages 进行新映射的 va->pa 的PTE的装载
   if(mappages(kpgtbl, va, sz, pa, perm) != 0)
     panic("kvmmap");
 }
@@ -143,18 +153,19 @@ mappages(pagetable_t pagetable, uint64 va, uint64 size, uint64 pa, int perm)
   if(size == 0)
     panic("mappages: size");
   
-  a = PGROUNDDOWN(va);
-  last = PGROUNDDOWN(va + size - 1);
+  a = PGROUNDDOWN(va);                // 将va对齐到最近的页面边界以下
+  last = PGROUNDDOWN(va + size - 1);  // 计算映射区域的最后一个页面的地址,同样进行对齐
   for(;;){
-    if((pte = walk(pagetable, a, 1)) == 0)
+    // 调用walk函数来获取或创建指向 a 的虚拟地址的PTE
+    if((pte = walk(pagetable, a, 1)) == 0) // walk返回0,表示无法分配所需的PTE
       return -1;
-    if(*pte & PTE_V)
+    if(*pte & PTE_V)  // 检查当前PTE是否已经有效
       panic("mappages: remap");
-    *pte = PA2PTE(pa) | perm | PTE_V;
+    *pte = PA2PTE(pa) | perm | PTE_V; // 设置当前PTE,将pa转为PTE,并用传入的权限permission来设置有效位
     if(a == last)
       break;
-    a += PGSIZE;
-    pa += PGSIZE;
+    a += PGSIZE;   // 虚拟地址增加一个页面大小
+    pa += PGSIZE;  // 物理地址增加一个页面大小
   }
   return 0;
 }

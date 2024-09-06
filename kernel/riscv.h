@@ -347,8 +347,10 @@ sfence_vma()
 // shift a physical address to the right place for a PTE.
 #define PA2PTE(pa) ((((uint64)pa) >> 12) << 10)
 
-#define PTE2PA(pte) (((pte) >> 10) << 12)
+// PTE中的低10位是状态位,先右移10位去掉状态位再左挪12位,得到Physical Address
+#define PTE2PA(pte) (((pte) >> 10) << 12) 
 
+// 用 mask = 0x3FF 提取PTE的低10位,即状态位
 #define PTE_FLAGS(pte) ((pte) & 0x3FF)
 
 // extract the three 9-bit page table indices from a virtual address.
