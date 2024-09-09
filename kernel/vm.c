@@ -98,7 +98,7 @@ walk(pagetable_t pagetable, uint64 va, int alloc)
       // alloc = 0则不分配新页表,否则要分配新页(利用kalloc)
       // kalloc()一次分配4096Bytes(4KB),kalloc()返回0说明分配失败
       if(!alloc || (pagetable = (pde_t*)kalloc()) == 0)
-        return 0; 
+        return 0; // 没找到PTE并且: 不需要分配 或 需要分配,但分配失败
       memset(pagetable, 0, PGSIZE);     // 将新分配的页表初始化为0
       *pte = PA2PTE(pagetable) | PTE_V; // 将新分配的页表的物理地址转为PTE,并设置PTE_V
     }

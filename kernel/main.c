@@ -29,7 +29,7 @@ main()
     fileinit();      // file table
     virtio_disk_init(); // emulated hard disk
     userinit();      // first user process
-    __sync_synchronize();
+    __sync_synchronize();  // 保证命令执行顺序,started = 1只会在上边的代码执行完后才执行
     started = 1;
   } else {
     while(started == 0)

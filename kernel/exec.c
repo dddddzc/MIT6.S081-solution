@@ -49,12 +49,12 @@ exec(char *path, char **argv)
     if(ph.vaddr + ph.memsz < ph.vaddr)
       goto bad;
     uint64 sz1;
-    if((sz1 = uvmalloc(pagetable, sz, ph.vaddr + ph.memsz)) == 0)
+    if((sz1 = uvmalloc(pagetable, sz, ph.vaddr + ph.memsz)) == 0) // 为每个 ELF segment 分配内存
       goto bad;
     sz = sz1;
     if((ph.vaddr % PGSIZE) != 0)
       goto bad;
-    if(loadseg(pagetable, ph.vaddr, ip, ph.off, ph.filesz) < 0)
+    if(loadseg(pagetable, ph.vaddr, ip, ph.off, ph.filesz) < 0) // 将每个 segment 加载到内存中
       goto bad;
   }
   iunlockput(ip);
@@ -83,9 +83,10 @@ exec(char *path, char **argv)
     sp -= sp % 16; // riscv sp must be 16-byte aligned
     if(sp < stackbase)
       goto bad;
+    // 一次将参数中的一个字符串复制到栈顶
     if(copyout(pagetable, sp, argv[argc], strlen(argv[argc]) + 1) < 0)
       goto bad;
-    ustack[argc] = sp;
+    ustack[argc] = sp; // 在ustack中记录指向他们的指针
   }
   ustack[argc] = 0;
 
@@ -139,7 +140,7 @@ loadseg(pagetable_t pagetable, uint64 va, struct inode *ip, uint offset, uint sz
   uint64 pa;
 
   for(i = 0; i < sz; i += PGSIZE){
-    pa = walkaddr(pagetable, va + i);
+    pa = walkaddr(pagetable, va + i); // 找到分配内存的物理地址
     if(pa == 0)
       panic("loadseg: address should exist");
     if(sz - i < PGSIZE)

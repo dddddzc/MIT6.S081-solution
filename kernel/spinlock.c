@@ -68,7 +68,7 @@ release(struct spinlock *lk)
   //   amoswap.w zero, zero, (s1)
   __sync_lock_release(&lk->locked);
 
-  pop_off();
+  pop_off();  // 启用中断
 }
 
 // Check whether this cpu is holding the lock.
@@ -91,9 +91,9 @@ push_off(void)
   int old = intr_get();
 
   intr_off();
-  if(mycpu()->noff == 0)
-    mycpu()->intena = old;
-  mycpu()->noff += 1;
+  if(mycpu()->noff == 0)    // 在第一次调acquire之前将之前的中断状态保存在intena
+    mycpu()->intena = old; 
+  mycpu()->noff += 1;       // spinlock的嵌套层数 +1
 }
 
 void
@@ -105,6 +105,6 @@ pop_off(void)
   if(c->noff < 1)
     panic("pop_off");
   c->noff -= 1;
-  if(c->noff == 0 && c->intena)
+  if(c->noff == 0 && c->intena) // 如果spinlock计数器归0,并且中断在之前就是启用的,则re-enable
     intr_on();
 }

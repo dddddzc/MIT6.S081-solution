@@ -47,18 +47,19 @@ void
 kfree(void *pa)
 {
   struct run *r;
-
+  // 检查: 是否对齐 以及 end <= pa <= PHYSTOP
   if(((uint64)pa % PGSIZE) != 0 || (char*)pa < end || (uint64)pa >= PHYSTOP)
     panic("kfree");
 
   // Fill with junk to catch dangling refs.
   // 导致使用 dangling pointer 读取到garbage,更快崩溃
+  // (我们不希望在free一个页面后还能读取到它)
   memset(pa, 1, PGSIZE);
 
   r = (struct run*)pa;
 
   acquire(&kmem.lock);
-  r->next = kmem.freelist; // 将页面从前面插入到freelist中
+  r->next = kmem.freelist; // 将页面从前面插回到freelist中
   kmem.freelist = r;
   release(&kmem.lock);
 }
@@ -74,7 +75,7 @@ kalloc(void)
   acquire(&kmem.lock);
   r = kmem.freelist;
   if(r)
-    kmem.freelist = r->next;
+    kmem.freelist = r->next; //将freelist中的第一页用来分配
   release(&kmem.lock);
 
   if(r)
