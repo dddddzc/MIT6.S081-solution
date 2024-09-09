@@ -463,6 +463,6 @@ void vmprint_recursion(pagetable_t pagetable, int depth)
 void
 vmprint(pagetable_t pagetable)
 {
-  printf("page table %p\n", pagetable);
+  printf("page table %p\n", pagetable); // %p是以16进制的形式输出
   vmprint_recursion(pagetable, 1);
 }

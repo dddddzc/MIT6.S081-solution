@@ -81,6 +81,35 @@ int
 sys_pgaccess(void)
 {
   // lab pgtbl: your code here.
+  uint64 userpage_va;
+  uint64 buff_bitmask = 0;  // temp var
+  uint64 useraddr_buff;     // dst user address
+
+  int page_num;
+  int MAX_PAGE_NUM = 32; // 限制最大页数
+
+  pagetable_t pt = myproc()->pagetable;
+
+  argaddr(0, &userpage_va);
+  argint(1, &page_num);
+  argaddr(2, &useraddr_buff);    // 最终要拷贝到的用户地址
+
+  for(int i = 0; i < MAX_PAGE_NUM; i++)
+  {
+    pte_t* pte = walk(pt, userpage_va + PGSIZE * i, 0); // alloc 参数设为0,表示只查询不分配
+    if(*pte & PTE_A) // 最近访问过
+    {
+      *pte = *pte & (~PTE_A);    // 将pte的PTE_A位设为0,其他不变
+      buff_bitmask = buff_bitmask | (1 << i);
+    }
+  }
+
+  if(copyout(pt, useraddr_buff, (char *)&buff_bitmask, 4) != 0)
+  {
+    panic("sys_pgaccess copyout error!");
+    return -1;
+  }
+  
   return 0;
 }
 #endif
