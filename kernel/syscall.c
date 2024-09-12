@@ -134,10 +134,11 @@ syscall(void)
 {
   int num;
   struct proc *p = myproc();
-
+  
+  // syscall的编号存在trapframe中,这是由trampoline.S设置的
   num = p->trapframe->a7;
   if(num > 0 && num < NELEM(syscalls) && syscalls[num]) {
-    p->trapframe->a0 = syscalls[num]();
+    p->trapframe->a0 = syscalls[num](); // 进入具体的syscall_xxx函数执行,返回值赋给trapframe->a0
   } else {
     printf("%d %s: unknown sys call %d\n",
             p->pid, p->name, num);

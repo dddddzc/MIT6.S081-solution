@@ -64,7 +64,7 @@ usertrap(void)
     // so don't enable until done with those registers.
     intr_on();
 
-    syscall();
+    syscall();  // 在此处执行user给出的系统调用请求
   } else if((which_dev = devintr()) != 0){
     // ok
   } else {

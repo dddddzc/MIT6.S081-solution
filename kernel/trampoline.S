@@ -14,15 +14,14 @@ trampoline:
 .align 4
 .globl uservec
 uservec:    
-	#
         # trap.c sets stvec to point here, so
         # traps from user space start here,
         # in supervisor mode, but with a
         # user page table.
-        #
+
         # sscratch points to where the process's p->trapframe is
         # mapped into user space, at TRAPFRAME.
-        #
+        # 0x3fffffe000 : trapframe Virtual Address for every process
         
 	# swap a0 and sscratch
         # so that a0 is TRAPFRAME
@@ -91,6 +90,7 @@ userret:
         # usertrapret() calls here.
         # a0: TRAPFRAME, in user page table.
         # a1: user page table, for satp.
+        # a0 和 a1 的当前值来源于usertrapret()
 
         # switch to the user page table.
         csrw satp, a1

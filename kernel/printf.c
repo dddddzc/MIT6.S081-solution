@@ -132,3 +132,23 @@ printfinit(void)
   initlock(&pr.lock, "pr");
   pr.locking = 1;
 }
+
+void 
+backtrace(void)
+{
+  printf("backtrace:\n");
+  // 获取s0中的值:当前正在执行的函数的帧指针
+  uint64 curr_fp = r_fp();
+  uint64 bottom_fp = PGROUNDUP(curr_fp);
+  // 连续的函数调用,会让stack向上堆叠,即address变小
+  // 即越早的函数,地址越大,越靠近栈底
+  // 跳到stack页的底部时,应该停止
+  // PGROUNDDOWN会更大,PGROUNDUP会更小
+  while(PGROUNDDOWN(curr_fp) != bottom_fp)
+  {
+    // curr_fp - 8 是当前stack frame的return address
+    printf("%p\n", *(uint64*)(curr_fp - 8));
+    // curr_fp - 16 是当前stack frame的prev frame
+    curr_fp = *(uint64*)(curr_fp - 16);
+  }
+}
