@@ -77,8 +77,25 @@ usertrap(void)
     exit(-1);
 
   // give up the CPU if this is a timer interrupt.
+  // Every tick, the hardware clock forces an interrupt
+  // it is handled in usertrap() at here.
   if(which_dev == 2)
+  {
+    p->tick_count++;
+    if(p->tick_count == p->interval && p->handle_flag == 0)
+    {
+      // 清空tick_count,重新从0开始计数
+      p->tick_count = 0;
+      // 在执行fn的过程中进程可能又经过了指定数量的ticks使得内核再次调用fn
+      // 为了避免该情况发生我们需要记录进程是否在执行fn
+      p->handle_flag = 1;
+      // 此处要先memmove,再将p->trapfram->epc设为p->handler
+      // 否则saved_trapframe中的epc也将是handler,一直handler循环
+      memmove(p->saved_trapframe, p->trapframe, PGSIZE);
+      p->trapframe->epc = p->handler; // p->trapframe->epc保存着从trap恢复后的pc地址
+    }
     yield();
+  }
 
   usertrapret();
 }

@@ -62,6 +62,7 @@ sys_sleep(void)
     return -1;
   
   backtrace();
+
   acquire(&tickslock);
   ticks0 = ticks;
   while(ticks - ticks0 < n){
@@ -97,3 +98,22 @@ sys_uptime(void)
   release(&tickslock);
   return xticks;
 }
+
+uint64
+sys_sigalarm(void)
+{
+  struct proc* p = myproc();
+  argint(0, &(p->interval));
+  argaddr(1, &(p->handler));
+  return 0;
+}
+
+uint64
+sys_sigreturn(void)
+{
+  struct proc* p = myproc();
+  p->handle_flag = 0; // 防止被多次调用
+  memmove(p->trapframe, p->saved_trapframe, PGSIZE); // 将之前保存的trapframe挪回来
+  return p->trapframe->a0;
+}
+
