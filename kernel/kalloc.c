@@ -23,10 +23,17 @@ struct {
   struct run *freelist;
 } kmem;
 
+struct {
+  struct spinlock lock;
+  int count[(PHYSTOP - KERNBASE) / PGSIZE];
+} ref_count;
+
 void
 kinit()
 {
   initlock(&kmem.lock, "kmem");
+  // 初始化页面计数的自旋锁
+  initlock(&ref_count.lock, "ref_count");
   freerange(end, (void*)PHYSTOP);
 }
 
@@ -36,7 +43,12 @@ freerange(void *pa_start, void *pa_end)
   char *p;
   p = (char*)PGROUNDUP((uint64)pa_start);
   for(; p + PGSIZE <= (char*)pa_end; p += PGSIZE)
+  {
+    // 在kinit中会调用freerange来初始化一些空页面
+    // 在kfree中将会对count减1，这里要先设为1，否则就会减成负数
+    ref_count.count[(uint64)p / PGSIZE] = 1;
     kfree(p);
+  }
 }
 
 // Free the page of physical memory pointed at by v,
@@ -51,15 +63,23 @@ kfree(void *pa)
   if(((uint64)pa % PGSIZE) != 0 || (char*)pa < end || (uint64)pa >= PHYSTOP)
     panic("kfree");
 
-  // Fill with junk to catch dangling refs.
-  memset(pa, 1, PGSIZE);
+  acquire(&ref_count.lock);
+  ref_count.count[(uint64)pa / PGSIZE]--;
+  release(&ref_count.lock);
+  
+  // 只有当引用计数变为0才free
+  if(ref_count.count[(uint64)pa / PGSIZE] == 0)
+  {
+    // Fill with junk to catch dangling refs.
+    memset(pa, 1, PGSIZE);
 
-  r = (struct run*)pa;
+    r = (struct run*)pa;
 
-  acquire(&kmem.lock);
-  r->next = kmem.freelist;
-  kmem.freelist = r;
-  release(&kmem.lock);
+    acquire(&kmem.lock);
+    r->next = kmem.freelist;
+    kmem.freelist = r;
+    release(&kmem.lock);
+  }
 }
 
 // Allocate one 4096-byte page of physical memory.
@@ -73,10 +93,44 @@ kalloc(void)
   acquire(&kmem.lock);
   r = kmem.freelist;
   if(r)
+  {
     kmem.freelist = r->next;
+    
+    acquire(&ref_count.lock);
+    ref_count.count[(uint64)r / PGSIZE] = 1; // 初始化为1
+    release(&ref_count.lock);
+  }
   release(&kmem.lock);
 
   if(r)
     memset((char*)r, 5, PGSIZE); // fill with junk
   return (void*)r;
+}
+
+void add_ref_count(uint64 pa)
+{
+  if(((uint64)pa % PGSIZE) != 0 || (char*)pa < end || (uint64)pa >= PHYSTOP)
+    panic("add_ref_count error!");
+
+  acquire(&ref_count.lock);
+  ref_count.count[(uint64)pa / PGSIZE]++;// 初始化为1
+  release(&ref_count.lock);
+}
+
+void sub_ref_count(uint64 pa)
+{
+  if(((uint64)pa % PGSIZE) != 0 || (char*)pa < end || (uint64)pa >= PHYSTOP)
+    panic("sub_ref_count error!");
+
+  acquire(&ref_count.lock);
+  ref_count.count[(uint64)pa / PGSIZE]--; 
+  release(&ref_count.lock);
+}
+
+int get_ref_count(uint64 pa)
+{
+  if(((uint64)pa % PGSIZE) != 0 || (char*)pa < end || (uint64)pa >= PHYSTOP)
+    panic("get_ref_count error!");
+
+  return ref_count.count[(uint64)pa / PGSIZE];
 }

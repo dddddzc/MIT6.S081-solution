@@ -302,23 +302,30 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
 {
   pte_t *pte;
   uint64 pa, i;
-  uint flags;
-  char *mem;
 
   for(i = 0; i < sz; i += PGSIZE){
     if((pte = walk(old, i, 0)) == 0)
       panic("uvmcopy: pte should exist");
     if((*pte & PTE_V) == 0)
       panic("uvmcopy: page not present");
+
+    // 如果父页面可写,则标记COW,并清除PTE_W
+    if(*pte & PTE_W)
+    {
+      *pte |= PTE_COW;
+      *pte &= ~PTE_W;
+    }
+
+    // 进行新页面的映射
     pa = PTE2PA(*pte);
-    flags = PTE_FLAGS(*pte);
-    if((mem = kalloc()) == 0)
-      goto err;
-    memmove(mem, (char*)pa, PGSIZE);
-    if(mappages(new, i, PGSIZE, (uint64)mem, flags) != 0){
-      kfree(mem);
+    uint new_flags = PTE_FLAGS(*pte);
+    if(mappages(new, i, PGSIZE, pa, new_flags) != 0){
+      uvmunmap(new, 0, i / PGSIZE, 1);
       goto err;
     }
+
+    // 增加对该物理地址的引用计数
+    add_ref_count(pa);
   }
   return 0;
 
@@ -350,7 +357,17 @@ copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)
 
   while(len > 0){
     va0 = PGROUNDDOWN(dstva);
-    pa0 = walkaddr(pagetable, va0);
+    // 如果是COW页面的情况,则使用cow_alloc分配新的物理地址
+    // 再copy出去
+    if(is_cow_page(pagetable, va0))
+    {
+      pa0 = (uint64)cow_alloc(pagetable, va0);
+    }
+    else
+    {
+      pa0 = walkaddr(pagetable, va0);
+    }
+
     if(pa0 == 0)
       return -1;
     n = PGSIZE - (dstva - va0);

@@ -67,6 +67,21 @@ usertrap(void)
     syscall();
   } else if((which_dev = devintr()) != 0){
     // ok
+  } else if(r_scause() == 13 || r_scause() == 15) { // 读写page fault
+    uint64 va = r_stval();
+    if(is_cow_page(p->pagetable, va))
+    {
+      if(cow_alloc(p->pagetable, va) == 0)
+      {
+        printf("usertrap(): cow_alloc error!\n");
+        p->killed = 1;
+      }
+    }
+    else
+    {
+      printf("usertrap(): not a cow fault!\n");
+      p->killed = 1;
+    }
   } else {
     printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
     printf("            sepc=%p stval=%p\n", r_sepc(), r_stval());
@@ -218,3 +233,64 @@ devintr()
   }
 }
 
+// 如果是cow_page返回1,如果不是返回0
+int is_cow_page(pagetable_t pagetable, uint64 va) 
+{
+  if(va >= MAXVA)
+    panic("address too big!");
+
+  pte_t* pte = walk(pagetable, va, 0);
+  if(pte == 0)
+    return 0;
+  if((*pte & PTE_V) == 0)
+    return 0;
+  if((*pte & PTE_U) == 0)
+    return 0;
+  
+  // 如果有PTE_COW标志位则是cow_page
+  if((*pte & PTE_COW) == 0)
+    return 0;
+  return 1;
+}
+
+// 如果分配成功,返回alloc之后va对应的物理地址
+// 如果分配失败,返回0
+void* cow_alloc(pagetable_t pagetable, uint64 va)
+{
+  va = PGROUNDDOWN(va);
+  pte_t* pte = walk(pagetable, va, 0);
+  uint64 pa = PTE2PA(*pte);
+
+  // 仅有一个进程对此pa引用,直接修改权限再返回pa即可
+  if(get_ref_count(pa) == 1)
+  {
+    *pte |= PTE_W;
+    *pte &= ~PTE_COW;
+    return (void*)pa;
+  }
+  else // 多个进程引用,需要分配新页面,并拷贝旧页面的内容
+  {
+    char* mem = kalloc();
+    if(mem == 0) return 0;
+    // 复制旧页面内容到新页
+    memmove(mem, (char*)pa, PGSIZE);
+
+    // 清除父进程的PTE_V，否则在mappagges中会判定为remap
+    *pte &= ~PTE_V;
+    uint new_flags = (PTE_FLAGS(*pte) | PTE_W) & (~PTE_COW);
+    // 为新页面添加映射
+    if(mappages(pagetable, va, PGSIZE, (uint64)mem, new_flags) != 0)
+    {
+      kfree(mem);
+      *pte |= PTE_V;  // 如果新页面没有映射成功,再将父进程的PTE_V设回去
+      printf("cow_alloc error!\n");
+      return 0;
+    }
+
+    // 如果分配成功了,仍然将PTE_V设置回去
+    *pte |= PTE_V;
+    // 将原来的物理内存引用计数减1
+    sub_ref_count(pa);
+    return mem;
+  }
+}
